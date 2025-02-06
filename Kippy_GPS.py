@@ -45,40 +45,15 @@ class Kippy_http_handler(Thread):
         url = "https://webapp.kippy.eu/de/login"
         data ={'_csrf':csrf, 'LoginForm[username]':self.mail, 'LoginForm[password]':self.pw, 'login-button':''}
         r = requests.post(url=url, data=data)
-        return r.text
-        #print(r.text)
-        #self.get_pos(r.text)
-    def get_ajax_mapaction(self):
-        #headers = {'host':'webapp.kippy.eu','connection':'keep-alive','x-csrf-token':self.csrf,'x-requested-with':'XMLHttpRequest','accept':'*/*','content-type':'application/x-www-form-urlencoded; charset=UTF-8','origin':'https://webapp.kippy.eu','sec-fetch-site':'same-origin','sec-fetch-mode':'cors','sec-fetch-dest':'empty','referer':'https://webapp.kippy.eu/de/map/AD2NXL3','accept-encoding':'gzip'}
-        headers = {'host':'webapp.kippy.eu',\
-                    'connection':'keep-alive',\
-                    'sec-ch-ua-platform':'"Windows"',\
-                    'x-csrf-token':self.csrf,\
-                    #m'sec-ch-ua':'"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',\
-                    'sec-ch-ua-mobile':'?0',\
-                    'x-requested-with':'XMLHttpRequest',\
-                    'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',\
-                    'accept':'*/*',\
-                    'content-type':'application/x-www-form-urlencoded; charset=UTF-8',\
-                    'origin':'https://webapp.kippy.eu',\
-                    'sec-fetch-site':'same-origin',\
-                    'sec-fetch-mode':'cors',\
-                    'sec-fetch-dest':'empty',\
-                    'referer':'https://webapp.kippy.eu/de/map/AD2NXL3',\
-                    'accept-encoding':'gzip',\
-                    'accept-language':'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'}
-        kip_id = '180836'
-        body = f'id={kip_id}&type=refresh&_csrf={self.csrf}'
-        payload = {'id':'180836','type':'refresh','_csrf':self.csrf}
-        url='https://webapp.kippy.eu/ajax/mapaction'
-        r = requests.post(url=url, headers=headers, json=payload)
         print(r.text)
-        print(body)
-        print(headers)
-        #id=180836&type=refresh&_csrf=_asBWq08bVshH-x6O5_a3wGGViQ8FvuYmShtD2wtrNek8WQb3lcCCRMq2kJ054WwdvwlU3omtuz-USc9GG_moQ%3D%3D
+        return r.text
+        
+        #self.get_pos(r.text)
+
+        
     def get_pos_from_server(self):
         html = self.login(self.csrf)
-        return self.get_pos(html)
+        return self.get_pos(html), self.get_battery_percentage(html), self.get_last_update(html)
     
     def get_pos(self,html_body):
         part = html_body.split('var petlat = ')[1]
@@ -87,6 +62,18 @@ class Kippy_http_handler(Thread):
         #print(f'Longitude: [{latitude}]')
         #print(f'Longitude: [{longitude}]')
         return latitude, longitude
+    
+    def get_battery_percentage(self, html_body):
+        part = html_body.split('<div class="battery">')[1].split('</i>')[1]
+        battery_percentage = part.split('%')[0]
+        return battery_percentage
+    
+    def get_last_update(self, html_body):
+        part = html_body.split('<div class="ultimoagg">')[1].split('<span id="ultimacon">')[1]
+        last_update = part.split('</span></div>')[0]
+        return last_update
+        
+        
     
     def get_pos_after_login(self):
         url = 'https://webapp.kippy.eu/de/map/'+ self.hw_id
@@ -101,10 +88,13 @@ class Kippy_http_handler(Thread):
             activate_tracking = self.hass_helper.get_entity_state('input_boolean.bluecat_kippy_gps_active')
             time.sleep(1)
             if(activate_tracking == 'on'):
-                longitude, latitude = self.get_pos_from_server()
+                (longitude, latitude), battery_percentage, last_update = self.get_pos_from_server()
                 print(f'Latitude: [{latitude}]')
                 self.hass_helper.set_entity_state('input_text.bluecat_gps_longitude',longitude)
                 self.hass_helper.set_entity_state('input_text.bluecat_gps_latitude',latitude)
+                self.hass_helper.set_entity_state('input_number.bluecat_battery_percentage',battery_percentage)
+                self.hass_helper.set_entity_state('input_text.bluecat_last_update',last_update)
+                
                 print(f'Longitude: [{longitude}]')
                 time.sleep(10)
         
@@ -132,13 +122,31 @@ class Kippy_http_handler(Thread):
                     continue
         
         def set_entity_state(self,entity_id, value):
-            client = Client(self.URL, self.persistant_HASS_token)
-            client.set_state(State(state=value, entity_id=entity_id))
+            try:
+                client = Client(self.URL, self.persistant_HASS_token)
+                client.set_state(State(state=value, entity_id=entity_id))
+            except ConnectionError as e:
+                print("Connection error: could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
+            except Exception as e:
+                print("could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
             
         def get_entity_state(self, entity_id):
-            client = Client(self.URL, self.persistant_HASS_token) 
-            entity = client.get_entity(entity_id=entity_id) #session is closed after this call
-            return entity.get_state().state
+            try:
+                client = Client(self.URL, self.persistant_HASS_token) 
+                entity = client.get_entity(entity_id=entity_id) #session is closed after this call
+                return entity.get_state().state
+            except ConnectionError as e:
+                print("Connection error: could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
+            except Exception as e:
+                print("could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
         
         
 if __name__ == '__main__':

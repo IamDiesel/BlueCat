@@ -81,47 +81,38 @@ class BeaconDelegate(Thread, DefaultDelegate):
                     continue
         
         def set_entity_state(self,entity_id, value):
-            client = Client(self.URL, self.persistant_HASS_token)
-            client.set_state(State(state=value, entity_id=entity_id))
+            try:
+                client = Client(self.URL, self.persistant_HASS_token)
+                client.set_state(State(state=value, entity_id=entity_id))
+            except ConnectionError as e:
+                print("Connection error: could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
+            except Exception as e:
+                print("could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
             
         def get_entity_state(self, entity_id):
-            client = Client(self.URL, self.persistant_HASS_token) 
-            entity = client.get_entity(entity_id=entity_id) #session is closed after this call
-            return entity.get_state().state
-        """
-        if isNewDev:
-            print("Discovered device", dev.addr)
-            for (adtype, desc, value) in dev.getScanData():
-                print ("  %s = %s" % (desc, value))
-                
-        elif isNewData:
-            print("Received new data from", dev.addr)
-            for (adtype, desc, value) in dev.getScanData():
-                print("  %s = %s" % (desc, value))
-        else:
-            print("****")
-            print("Device %s (%s), RSSI=%d dB" % (dev.addr, dev.addrType, dev.rssi))
-            print("****")
-        print("--------------------------")
-        """
+            try:
+                client = Client(self.URL, self.persistant_HASS_token) 
+                entity = client.get_entity(entity_id=entity_id) #session is closed after this call
+                return entity.get_state().state
+            except ConnectionError as e:
+                print("Connection error: could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
+            except Exception as e:
+                print("could not set entity: error at Hass Helper:",e)
+                time.sleep(5)
+                pass
 
 if __name__ == '__main__':
     from HASS_Token import token
     from BlueCat_ID import bt_addr_beacon, bt_addr_device
-    #sn_mainboard = "0001"
-    #sn_display = "TGLBK1NM"
     scan_slave = BeaconDelegate(bt_addr_beacon=bt_addr_beacon,bt_addr_device=bt_addr_device, persistant_HASS_token=token)
     scan_slave_thread = Thread(target = scan_slave.run)
     scan_slave_thread.start()
     scan_slave_thread.join()
     
-    #scanner = Scanner(iface=0).withDelegate(scan_slave)
-    #devices = scanner.scan(100.0, passive=True)
-    #scan_slave.run()    
-    """for dev in devices:
-        print("Device %s (%s), RSSI=%d dB" % (dev.addr, dev.addrType, dev.rssi))
-        for (adtype, desc, value) in dev.getScanData():
-            print("  %s = %s" % (desc, value))
-        print("------------------")"""
-            
-#ScanDelegate('e8:c3:15:8d:f5:ab')
+
