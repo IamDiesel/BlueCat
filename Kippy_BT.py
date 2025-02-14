@@ -13,13 +13,16 @@ class BeaconDelegate(Thread, DefaultDelegate):
         self.bt_addr_device = bt_addr_device
         self.bt_dev = self.getBTDeviceByBTAddress()
         self.scanner = Scanner(iface=int(self.bt_dev)).withDelegate(self)
+        print(self.bt_dev)
+        self.hass_helper = self.HASS_Helper(persistant_HASS_token)       
         self.running = False
         super(BeaconDelegate, self).__init__()
-        self.hass_helper = self.HASS_Helper(persistant_HASS_token)
+
         self.bluecat_rssi = -130 #-130 dB --> No signal
         self.count_findings = 0
         #self.beacon_found_flag = False
         self.timestamp_beacon_found = time.time()
+        print("finished BT init")
         
         
     def run(self):
@@ -40,11 +43,14 @@ class BeaconDelegate(Thread, DefaultDelegate):
         command = f'hciconfig | grep -B1 {self.bt_addr_device} | cut -c 4-4 | head -n 1'
 
         try:
-            device = subprocess.check_output(command, shell = True, executable = "/bin/bash", stderr = subprocess.STDOUT)
+            device = str(subprocess.check_output(command, shell = True, executable = "/bin/bash", stderr = subprocess.STDOUT))
         except subprocess.CalledProcessError as cpe:
             result = cpe.output
             print("Error@ScanDelecate: BT-Device not found on this system",result)
-            pass           
+            pass
+        device = device[2:3]
+        print(f'BT-Device:[{str(device)}]')
+     
         return device
 
     def handleDiscovery(self, dev, isNewDev, isNewData):
@@ -54,6 +60,7 @@ class BeaconDelegate(Thread, DefaultDelegate):
             self.hass_helper.set_entity_state('input_number.bluecat_received_signal_strength', self.bluecat_rssi)
             #self.beacon_found_flag = True
             self.timestamp_beacon_found = time.time()#datetime.now()
+        #print("hello")
                 
             
             

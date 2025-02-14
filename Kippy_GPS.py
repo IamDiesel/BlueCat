@@ -17,6 +17,7 @@ class Kippy_http_handler(Thread):
         self.csrf = self.get_csrf()
         self.hass_helper = self.HASS_Helper(persistant_HASS_token)
         self.running = False
+        self.text_last_update = None
         super(Kippy_http_handler, self).__init__()
         
     def get_url(self, url):
@@ -41,12 +42,17 @@ class Kippy_http_handler(Thread):
             return None
         
     def login(self,csrf):
-        csrf = self.csrf
-        url = "https://webapp.kippy.eu/de/login"
-        data ={'_csrf':csrf, 'LoginForm[username]':self.mail, 'LoginForm[password]':self.pw, 'login-button':''}
-        r = requests.post(url=url, data=data)
-        print(r.text)
-        return r.text
+        try:
+            csrf = self.csrf
+            url = "https://webapp.kippy.eu/de/login"
+            data ={'_csrf':csrf, 'LoginForm[username]':self.mail, 'LoginForm[password]':self.pw, 'login-button':''}
+            r = requests.post(url=url, data=data)
+            #print(r.text)
+            return r.text
+        except ConnectionError as e:
+            print("Error at Kippy_GPS login func:",e)
+            pass
+        return None
         
         #self.get_pos(r.text)
 
@@ -56,22 +62,36 @@ class Kippy_http_handler(Thread):
         return self.get_pos(html), self.get_battery_percentage(html), self.get_last_update(html)
     
     def get_pos(self,html_body):
-        part = html_body.split('var petlat = ')[1]
-        latitude = part.split(';')[0]
-        longitude = part.split('= ')[1].split(';')[0]
-        #print(f'Longitude: [{latitude}]')
-        #print(f'Longitude: [{longitude}]')
-        return latitude, longitude
+        if(html_body is not None):
+            part = html_body.split('var petlat = ')[1]
+            latitude = part.split(';')[0]
+            longitude = part.split('= ')[1].split(';')[0]
+            #print(f'Longitude: [{latitude}]')
+            #print(f'Longitude: [{longitude}]')
+            return latitude, longitude
+        else:
+            return None, None
     
     def get_battery_percentage(self, html_body):
-        part = html_body.split('<div class="battery">')[1].split('</i>')[1]
-        battery_percentage = part.split('%')[0]
-        return battery_percentage
+        if(html_body is not None):
+            part = html_body.split('<div class="battery">')[1].split('</i>')[1]
+            battery_percentage = part.split('%')[0]
+            return battery_percentage
+        else:
+            return None
     
     def get_last_update(self, html_body):
-        part = html_body.split('<div class="ultimoagg">')[1].split('<span id="ultimacon">')[1]
-        last_update = part.split('</span></div>')[0]
-        return last_update
+        #XmXs
+        if(html_body is not None):
+            part = html_body.split('<div class="ultimoagg">')[1].split('<span id="ultimacon">')[1]
+            last_update = part.split('</span></div>')[0].replace('vor','').replace('fa','').replace(' ','')
+            if(last_update == self.text_last_update or last_update == ''):
+                return None
+            else:
+                self.text_last_update = last_update
+                return last_update
+        else:
+            return "Error"
         
         
     
@@ -90,10 +110,12 @@ class Kippy_http_handler(Thread):
             if(activate_tracking == 'on'):
                 (longitude, latitude), battery_percentage, last_update = self.get_pos_from_server()
                 print(f'Latitude: [{latitude}]')
-                self.hass_helper.set_entity_state('input_text.bluecat_gps_longitude',longitude)
-                self.hass_helper.set_entity_state('input_text.bluecat_gps_latitude',latitude)
-                self.hass_helper.set_entity_state('input_number.bluecat_battery_percentage',battery_percentage)
-                self.hass_helper.set_entity_state('input_text.bluecat_last_update',last_update)
+                if(latitude is not None and longitude is not None):
+                    self.hass_helper.set_entity_state('input_text.bluecat_gps_longitude',longitude)
+                    self.hass_helper.set_entity_state('input_text.bluecat_gps_latitude',latitude)
+                    self.hass_helper.set_entity_state('input_number.bluecat_battery_percentage',battery_percentage)
+                if(last_update is not None):
+                    self.hass_helper.set_entity_state('input_text.bluecat_last_update',last_update)
                 
                 print(f'Longitude: [{longitude}]')
                 time.sleep(10)
