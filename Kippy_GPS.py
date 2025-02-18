@@ -1,7 +1,14 @@
-import requests
 import time
 from homeassistant_api import Client, State, errors
 from threading import Thread
+from pyvirtualdisplay import Display
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
+import datetime
+import shutil
+#import requests
+#import re
 
 class Kippy_http_handler(Thread):
     def __init__(self, mail, pw, hw_id, persistant_HASS_token):
@@ -14,111 +21,147 @@ class Kippy_http_handler(Thread):
         self.mail = mail
         self.pw = pw
         self.hw_id = hw_id
-        self.csrf = self.get_csrf()
+        #self.csrf = self.get_csrf()
         self.hass_helper = self.HASS_Helper(persistant_HASS_token)
         self.running = False
-        self.text_last_update = None
+        self.last_update = None
+        self.tracking_active = False
+        display = Display(visible=0, size=(1600, 1200))
+        display.start()
+        options = webdriver.ChromeOptions()
+        chromedriver_path = shutil.which("chromedriver")
+        service = webdriver.ChromeService(executable_path=chromedriver_path)
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        self.driver = webdriver.Chrome(service=service, options=options)
         super(Kippy_http_handler, self).__init__()
-        
-    def get_url(self, url):
-        #url = 'http://www.google.de'
-        r = requests.get(url)
-        #print("Code:"+str(r.status_code))
-        #print(r.headers)
-        #print(r.content)  # bytes
-        #print(r.text)     # r.content as str
-        if r.status_code == 200:
-            return r.text
-        else: return None
-    
-    def get_csrf(self):
-        url = 'https://webapp.kippy.eu/de/map/'+ self.hw_id
-        res = self.get_url(url)
-        if res is not None:
-            token = res.split('meta name="csrf-token" content="')[1].split('==">')[0]
-            print(token)
-            return token
-        else:
-            return None
-        
-    def login(self,csrf):
-        try:
-            csrf = self.csrf
-            url = "https://webapp.kippy.eu/de/login"
-            data ={'_csrf':csrf, 'LoginForm[username]':self.mail, 'LoginForm[password]':self.pw, 'login-button':''}
-            r = requests.post(url=url, data=data)
-            #print(r.text)
-            return r.text
-        except ConnectionError as e:
-            print("Error at Kippy_GPS login func:",e)
-            pass
-        return None
-        
-        #self.get_pos(r.text)
+        print("finished initializing GPS")
 
+    def activate_tracking(self):
+        status_green = self.driver.execute_script("""return $('#live_btn').hasClass('status_green');""")
+        status_yellow = self.driver.execute_script("""return $('#live_btn').hasClass('status_yellow');""")
+        if (status_green == False and status_yellow == False):
+            print("activating tracking")
+            self.driver.execute_script("""return $('#live_btn').click();""")
+            time.sleep(5)
+        else:
+            print(f"can't acivate tracking because of live button status: status_green:{status_green}, status_yellow:{status_yellow}")
+
+    def deactivate_tracking(self):
+        status_green = self.driver.execute_script("""return $('#live_btn').hasClass('status_green');""")
+        if (status_green == True):
+            print("deactivating tracking")
+            self.driver.execute_script("""return $('#live_btn').click();""")
+            time.sleep(5)
+
+    def get_timestamp_last_update(self):
+        lastupdate_seconds = self.driver.execute_script("""return secondiagg;""")
+        timestamp = datetime.datetime.now() - datetime.timedelta(seconds=lastupdate_seconds)
+        #print(timestamp)
+        return timestamp
+    
+    def alternate_current_last_update(self, count):
+        if(count % 2 == 0):
+            return self.last_update - datetime.timedelta(microseconds=1)
+        else:
+            return self.last_update + datetime.timedelta(microseconds=1)
+
+    def login(self):
+        self.driver.get('https://webapp.kippy.eu/de/login')
+        time.sleep(1)
+        try:
+            txt_user = self.driver.find_element(By.ID,"loginform-username")
+            txt_pw = self.driver.find_element(By.ID,"loginform-password")
+            txt_user.send_keys(self.mail)
+            txt_pw.send_keys(self.pw)
+            login_button = self.driver.find_element(By.NAME,"login-button")
+            login_button.click()
+            time.sleep(5)
+        except NoSuchElementException:
+            pass #still logged in
+
+    def get_value_from_live_button_status(self, status_green, status_grey, status_yellow):
+        if(status_green):
+            return '3'
+        elif(status_grey):
+            return '2'
+        elif(status_yellow):
+            return '1'
+        else:
+            return '0' #error
         
-    def get_pos_from_server(self):
-        html = self.login(self.csrf)
-        return self.get_pos(html), self.get_battery_percentage(html), self.get_last_update(html)
-    
-    def get_pos(self,html_body):
-        if(html_body is not None):
-            part = html_body.split('var petlat = ')[1]
-            latitude = part.split(';')[0]
-            longitude = part.split('= ')[1].split(';')[0]
-            #print(f'Longitude: [{latitude}]')
-            #print(f'Longitude: [{longitude}]')
-            return latitude, longitude
-        else:
-            return None, None
-    
-    def get_battery_percentage(self, html_body):
-        if(html_body is not None):
-            part = html_body.split('<div class="battery">')[1].split('</i>')[1]
-            battery_percentage = part.split('%')[0]
-            return battery_percentage
-        else:
-            return None
-    
-    def get_last_update(self, html_body):
-        #XmXs
-        if(html_body is not None):
-            part = html_body.split('<div class="ultimoagg">')[1].split('<span id="ultimacon">')[1]
-            last_update = part.split('</span></div>')[0].replace('vor','').replace('fa','').replace(' ','')
-            if(last_update == self.text_last_update or last_update == ''):
-                return None
-            else:
-                self.text_last_update = last_update
-                return last_update
-        else:
-            return "Error"
-        
-        
-    
-    def get_pos_after_login(self):
-        url = 'https://webapp.kippy.eu/de/map/'+ self.hw_id
-        res = self.get_url(url)
-        if res is not None:
-            return self.get_pos(res)
-        else:
-            return None
+
     def run(self):
         self.running = True
+        #https://www.qatouch.com/blog/selenium-with-python-tutorial/
+        #https://patrikmojzis.medium.com/how-to-run-selenium-using-python-on-raspberry-pi-d3fe058f011
+        # https://stackoverflow.com/questions/40735442/how-to-return-value-from-javascript-using-selenium
+        reload_site_seconds = 350#350
+        self.login()
+        update_interval_seconds = 1
+        time_count = 0
+        #start_live_tracking = False
+        tracking_stop_sequence = False
         while(self.running):
-            activate_tracking = self.hass_helper.get_entity_state('input_boolean.bluecat_kippy_gps_active')
-            time.sleep(1)
-            if(activate_tracking == 'on'):
-                (longitude, latitude), battery_percentage, last_update = self.get_pos_from_server()
-                print(f'Latitude: [{latitude}]')
-                if(latitude is not None and longitude is not None):
-                    self.hass_helper.set_entity_state('input_text.bluecat_gps_longitude',longitude)
-                    self.hass_helper.set_entity_state('input_text.bluecat_gps_latitude',latitude)
-                    self.hass_helper.set_entity_state('input_number.bluecat_battery_percentage',battery_percentage)
-                if(last_update is not None):
-                    self.hass_helper.set_entity_state('input_text.bluecat_last_update',last_update)
+            try:
+                time.sleep(update_interval_seconds)
+                time_count += update_interval_seconds
+
+                #TODO Tick home assistant via helper in order to update last timestamp value inside homeassistant
+                #check for user interaction
+                user_start_gps = self.hass_helper.get_entity_state('input_boolean.bluecat_start_gps_tracking_event')
+                user_stop_gps = self.hass_helper.get_entity_state('input_boolean.bluecat_stop_gps_tracking_event')
                 
-                print(f'Longitude: [{longitude}]')
-                time.sleep(10)
+                #Read kippy data and forward to home assistant
+                if(self.tracking_active == True or user_start_gps == 'on' or user_stop_gps == "on" or tracking_stop_sequence):                
+                    print("update")
+                    if(time_count % reload_site_seconds == 0):
+                        self.login()
+                        print(f"Bat:{battery_percentage},Lat:{petlat},Lon:{petlon},Rad:{radius},status_green:{status_green},lastupdate:{last_update}")
+                    activate_aquisition = self.hass_helper.get_entity_state('input_boolean.bluecat_kippy_gps_active')
+                    
+                    #self.activate_tracking()
+                    #read latitude, radius, live-button-status, battery and last update
+                    petlat = self.driver.execute_script("""return window.markerpet.getPosition().lat();""")
+                    petlon = self.driver.execute_script("""return window.markerpet.getPosition().lng();""")
+                    radius = self.driver.execute_script("""return window.petCircle.getRadius();""")
+                    status_green = self.driver.execute_script("""return $('#live_btn').hasClass('status_green');""")
+                    status_grey = self.driver.execute_script("""return $('#live_btn').hasClass('status_grey');""")
+                    status_yellow = self.driver.execute_script("""return $('#live_btn').hasClass('status_yellow');""")
+                    battery_percentage = self.driver.find_element(By.CLASS_NAME, "battery").text.replace('%','')
+                    self.last_update = self.get_timestamp_last_update()
+                    
+                    #submit values to home assistant
+                    self.hass_helper.set_entity_state('input_text.bluecat_gps_longitude', str(petlat))
+                    self.hass_helper.set_entity_state('input_text.bluecat_gps_latitude', str(petlon))
+                    self.hass_helper.set_entity_state('input_number.bluecat_battery_percentage', str(battery_percentage))
+                    self.hass_helper.set_entity_state('input_text.bluecat_last_update', str(self.last_update))
+                    self.hass_helper.set_entity_state('input_number.bluecat_status_live_button',str(self.get_value_from_live_button_status(status_green,status_grey,status_yellow)))
+                    self.hass_helper.set_entity_state('input_number.bluecat_radius', str(radius))
+                    
+                    if(tracking_stop_sequence):
+                        if(status_grey is True):
+                            tracking_stop_sequence = False
+                elif(self.last_update is not None):
+                    self.hass_helper.set_entity_state('input_text.bluecat_last_update', str(self.alternate_current_last_update(time_count)))
+                    print("no update")
+                    
+
+                #execute user action
+                if(user_start_gps == 'on'):
+                    self.activate_tracking()
+                    self.hass_helper.set_entity_state('input_boolean.bluecat_start_gps_tracking_event','off')
+                    self.tracking_active = True
+                elif(user_stop_gps == 'on'):
+                    self.deactivate_tracking()
+                    self.hass_helper.set_entity_state('input_boolean.bluecat_stop_gps_tracking_event', 'off')
+                    self.tracking_active = False
+                    tracking_stop_sequence = True
+            except BaseException as e:
+                print(e)
+                self.hass_helper.set_entity_state('input_text.bluecat_last_update', 'Error at Kippy_GPS run')
+                continue
+
         
     class HASS_Helper:
         #helper for i/o from and to homeassistant
