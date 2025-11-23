@@ -8,7 +8,7 @@ Home assistant then triggers an alert when the tracker is within the home region
 # Used Hardware #
 * Kippy CAT:  https://www.kippy.eu/de/product/kippy-cat
 * Raspberry Pi 5 running Home Assistant Supervised
-* UGREEN Bluetooth Adapter 5.3: https://www.amazon.de/UGREEN-Bluetooth-%C3%9Cbertragungsreichweite-Kopfh%C3%B6rer-Controller-Schwarz/dp/B0BXF13GB7
+* UGREEN Bluetooth Adapter 5.3: https://www.amazon.de/dp/B0CJXZJGVC?ref=ppx_yo2ov_dt_b_fed_asin_title or https://www.amazon.de/UGREEN-Bluetooth-%C3%9Cbertragungsreichweite-Kopfh%C3%B6rer-Controller-Schwarz/dp/B0BXF13GB7
 
 
 
@@ -144,10 +144,51 @@ mode: single
 <img width="1815" height="214" alt="image" src="https://github.com/user-attachments/assets/71facd97-ea48-49ea-ab81-5d4e6999d165" />
 
 ## Image for tracker
-Copy image to the following folders:
+Copy jpg image (www folder lola.jpg in this archive) to the following folders:
 /usr/share/hassio/homeassistant/www
 /usr/share/hassio/www
 
+## Install selenium on raspberry pi ##
+```
+sudo apt install python3-pyvirtualdisplay
+sudo apt install python3-pyvirtualdisplay
+ sudo apt install python3-xvfbwrapper
+sudo apt-get install chromium-browser
+sudo apt install python3-selenium
+sudo apt install chromium-chromedriver
+.bluecat/bin/pip install webdriver-manager
+.bluecat/bin/pip install PyVirtualDisplay xvfbwrapper selenium
+sudo apt-get install xvfb
+```
+
+## Install Pybluez on raspberry pi ##
+```
+sudo apt-get update
+sudo apt-get install -y libusb-dev libdbus-1-dev libglib2.0-dev libudev-dev libical-dev libreadline-dev
+wget https://www.kernel.org/pub/linux/bluetooth/bluez-5.9.tar.xz
+tar xvf bluez-5.9.tar.xz
+cd bluez-5.9
+./configure --enable-library
+make
+sudo make install
+```
+## Virtual environment,  homeassistant api & fix cannot open display ##
+```
+python3 -m venv .bluecat
+sudo .bluecat /bin/pip install requests
+. bluecat /bin/pip install homeassistant_api
+sudo .bluecat/bin/pip install bluepy
+export DISPLAY="127.0.0.1:10.0"
+```
+
+### The bluetooth interface must be available to this python script, hence bluetooth must be deactivated in home assistant ###
+Change home assistants configuration.yaml as follows:
+```
+default_config:
+  exclude:
+    - bluetooth
+```
+Also ignore all bluetooth integrations regarding the bluetooth devices under home assistant settings-->integrations.
 
 
 # Future features #
