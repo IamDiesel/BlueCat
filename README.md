@@ -143,6 +143,12 @@ mode: single
 ## /homeassistant/configuration.yaml
 <img width="1815" height="214" alt="image" src="https://github.com/user-attachments/assets/71facd97-ea48-49ea-ab81-5d4e6999d165" />
 
+## Image for tracker
+Copy image to the following folders:
+/usr/share/hassio/homeassistant/www
+/usr/share/hassio/www
+
+
 
 # Future features #
 [ x ] Use bluetooth beacon of Kippy tracker as second validator for the cat returning home
